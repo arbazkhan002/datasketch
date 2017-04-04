@@ -1,4 +1,8 @@
+import tqdm
 from collections import defaultdict
+
+from datasketch.storage import ordered_storage, unordered_storage
+from datasketch.minhash import MinHash
 
 
 _integration_precision = 0.001
@@ -70,13 +74,16 @@ class MinHashLSH(object):
             for the Jaccard similarity threshold.
             `weights` is a tuple in the format of 
             :code:`(false_positive_weight, false_negative_weight)`.
+        storage_config (dict, optional): Type of storage service to use for storing 
+            hashtables. Choose from ('dict', 'file', 'redis')
     
     Note:
         The MinHash LSH index also works with weighted Jaccard similarity
         and weighted MinHash without modification.
     '''
 
-    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5,0.5)):
+    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5,0.5), 
+                 storage_config={'type':'dict'}):
         if threshold > 1.0 or threshold < 0.0:
             raise ValueError("threshold must be in [0.0, 1.0]") 
         if num_perm < 2:
@@ -90,9 +97,9 @@ class MinHashLSH(object):
         false_positive_weight, false_negative_weight = weights
         self.b, self.r = _optimal_param(threshold, num_perm,
                 false_positive_weight, false_negative_weight)
-        self.hashtables = [defaultdict(list) for _ in range(self.b)]
+        self.hashtables = [unordered_storage(storage_config) for _ in range(self.b)]
         self.hashranges = [(i*self.r, (i+1)*self.r) for i in range(self.b)]
-        self.keys = dict()
+        self.keys = ordered_storage(storage_config)
 
     def insert(self, key, minhash):
         '''
@@ -109,10 +116,12 @@ class MinHashLSH(object):
                     % (self.h, len(minhash)))
         if key in self.keys:
             raise ValueError("The given key already exists")
-        self.keys[key] = [self._H(minhash.hashvalues[start:end]) 
+        Hs = [self._H(minhash.hashvalues[start:end])
                 for start, end in self.hashranges]
-        for H, hashtable in zip(self.keys[key], self.hashtables):
-            hashtable[H].append(key)
+        for H in Hs:
+            self.keys.insert(key, H)
+        for H, hashtable in zip(Hs, self.hashtables):
+            hashtable.insert(H, key)
 
     def query(self, minhash):
         '''
@@ -132,9 +141,8 @@ class MinHashLSH(object):
         candidates = set()
         for (start, end), hashtable in zip(self.hashranges, self.hashtables):
             H = self._H(minhash.hashvalues[start:end])
-            if H in hashtable:
-                for key in hashtable[H]:
-                    candidates.add(key)
+            for key in hashtable.get(H):
+                candidates.add(key)
         return list(candidates)
 
     def __contains__(self, key):
@@ -157,18 +165,73 @@ class MinHashLSH(object):
         if key not in self.keys:
             raise ValueError("The given key does not exist")
         for H, hashtable in zip(self.keys[key], self.hashtables):
-            hashtable[H].remove(key)
-            if not hashtable[H]:
-                del hashtable[H]
-        self.keys.pop(key)
+            hashtable.remove_val(H, key)
+            if not hashtable.get(H):
+                hashtable.remove(H)
+        self.keys.remove(key)
 
     def is_empty(self):
         '''
         Returns:
             bool: Check if the index is empty.
         '''
-        return any(len(t) == 0 for t in self.hashtables)
+        return any(t.size() == 0 for t in self.hashtables)
 
-    def _H(self, hs):
+    @staticmethod
+    def _H(hs):
         return bytes(hs.byteswap().data)
 
+    def get_counts(self):
+        self.counts_ = [hashtable.itemcounts() for hashtable in self.hashtables]
+        return self.counts_
+
+
+class DocMinHashLSH(MinHashLSH):
+    """
+    Driver for MinHashLSH.
+    """
+    def __init__(self, threshold=0.9, num_perm=128, weights=(0.5,0.5),
+                 storage_config={'type':'dict'}, random_seed=1,
+                 display_progress=True):
+        super(DocMinHashLSH, self).__init__(
+            threshold=threshold, num_perm=num_perm,
+            weights=weights, storage_config=storage_config)
+        self.random_seed = random_seed
+        self.display_progress = display_progress
+        self.storage_config = storage_config
+
+    def insert_documents(self, **documents):
+        for key, document in documents.items():
+            m = MinHash(num_perm=self.h, seed=self.random_seed)
+            for word in document:
+                m.update(word.encode('utf8'))
+            self.insert(key.encode('utf8'), m)
+
+    def query_keys(self, *keys):
+        to_union = set()
+        for key in tqdm.tqdm(keys, disable=not self.display_progress):
+            for H, hashtable in zip(self.keys[key], self.hashtables):
+                to_union.add(hashtable.get_reference(H))
+                # n = len(results)
+                # for result in results:
+                #     self.result_.increment(result.decode('utf8'), 1/n)
+        r = self.hashtables[0].union_references(*to_union)
+        for key in keys:
+            r.discard(key)
+        return r
+
+    def get_subset_counts(self, *keys):
+        key_set = set(keys)
+        hashtables = [unordered_storage({'type': 'dict'}) for _ in
+                      range(self.b)]
+        for key in [k for k in self.keys if k in key_set]:
+            for H, hashtable in zip(self.keys[key], hashtables):
+                hashtable.insert(H, key)
+        return [hashtable.itemcounts() for hashtable in hashtables]
+
+    def score_results(self, results, base_counts, seed_counts):
+        output = defaultdict(lambda: 0)
+        for result in results:
+            for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
+                output[result] += seed.get(H, 0)/base[H]
+        return output
