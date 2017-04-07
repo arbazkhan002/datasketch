@@ -260,6 +260,8 @@ class RedisSetStorage(UnorderedStorage, RedisListStorage):
         return {k: self._redis.scard(self.redis_key(k)) for k in self.keys()}
 
     def union_references(self, *references):
+        if not references:
+            return set()
         return self._redis.sunion(references)
 
 
