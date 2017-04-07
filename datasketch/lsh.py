@@ -233,5 +233,5 @@ class DocMinHashLSH(MinHashLSH):
         output = defaultdict(lambda: 0)
         for result in results:
             for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
-                output[result] += seed.get(H, 0)/base[H]
+                output[result] += seed.get(H, 0)/base[H]/self.b
         return output
