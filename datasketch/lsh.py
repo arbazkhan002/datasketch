@@ -1,7 +1,8 @@
 import tqdm
 from collections import defaultdict
 
-from datasketch.storage import ordered_storage, unordered_storage
+from datasketch.storage import (
+    ordered_storage, unordered_storage, prepare_storage)
 from datasketch.minhash import MinHash
 
 
@@ -97,6 +98,7 @@ class MinHashLSH(object):
         false_positive_weight, false_negative_weight = weights
         self.b, self.r = _optimal_param(threshold, num_perm,
                 false_positive_weight, false_negative_weight)
+        prepare_storage(storage_config)
         self.hashtables = [unordered_storage(storage_config) for _ in range(self.b)]
         self.hashranges = [(i*self.r, (i+1)*self.r) for i in range(self.b)]
         self.keys = ordered_storage(storage_config)
@@ -229,9 +231,15 @@ class DocMinHashLSH(MinHashLSH):
                 hashtable.insert(H, key)
         return [hashtable.itemcounts() for hashtable in hashtables]
 
-    def score_results(self, results, base_counts, seed_counts):
-        output = defaultdict(lambda: 0)
-        for result in results:
-            for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
-                output[result] += seed.get(H, 0)/base[H]/self.b
-        return output
+    # def score_results(self, results, base_counts, seed_counts):
+    #     output = defaultdict(lambda: 0)
+    #     for result in results:
+    #         for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
+    #             output[result] += seed.get(H, 0)/base[H]/self.b
+    #     return output
+
+    def get_status(self):
+        status = dict(keyspace_size=len(self.keys))
+        redis = self.keys.config.get('redis', {})
+        status.update(redis)
+        return status

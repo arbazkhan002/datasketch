@@ -15,11 +15,19 @@ def ordered_storage(config):
 
 
 def unordered_storage(config):
+    """Return an unordered storage system based on the specified config"""
     tp = config['type']
     if tp == 'dict':
         return DictSetStorage(config)
     if tp == 'redis':
         return RedisSetStorage(config)
+
+
+def prepare_storage(config):
+    tp = config['type']
+    if tp == 'redis':
+        redis_driver = redis.Redis(**config['redis'])
+        redis_driver.flushdb()
 
 
 # def sorted_storage(config):
