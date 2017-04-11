@@ -210,20 +210,19 @@ class DocMinHashLSH(MinHashLSH):
             self.insert(key.encode('utf8'), m)
 
     def query_keys(self, *keys):
+        keys = [x.encode('utf8') for x in keys]
         to_union = set()
         for key in tqdm.tqdm(keys, disable=not self.display_progress):
             for H, hashtable in zip(self.keys[key], self.hashtables):
                 to_union.add(hashtable.get_reference(H))
-                # n = len(results)
-                # for result in results:
-                #     self.result_.increment(result.decode('utf8'), 1/n)
         r = self.hashtables[0].union_references(*to_union)
         for key in keys:
             r.discard(key)
-        return r
+        l = [x.decode('utf8') for x in r]
+        return l
 
     def get_subset_counts(self, *keys):
-        key_set = set(keys)
+        key_set = set(x.encode('utf8') for x in keys)
         hashtables = [unordered_storage({'type': 'dict'}) for _ in
                       range(self.b)]
         for key in [k for k in self.keys if k in key_set]:
@@ -237,6 +236,9 @@ class DocMinHashLSH(MinHashLSH):
     #         for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
     #             output[result] += seed.get(H, 0)/base[H]/self.b
     #     return output
+
+    def get_hashvalues(self, key):
+        return self.keys[key.encode('utf8')]
 
     def get_status(self):
         status = dict(keyspace_size=len(self.keys))
