@@ -1,9 +1,9 @@
 from collections import defaultdict
-from abc import ABCMeta, abstractmethod
 import redis
 import random, string
 from functools import reduce
-
+from abc import ABCMeta, abstractmethod
+ABC = ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
 
 def ordered_storage(config):
     """Return ordered storage system based on the specified config"""
@@ -38,7 +38,7 @@ def prepare_storage(config):
 #         return RedisSortedStorage(config)
 
 
-class Storage(metaclass=ABCMeta):
+class Storage(ABC):
     def __getitem__(self, key):
         return self.get(key)
 
@@ -58,7 +58,7 @@ class Storage(metaclass=ABCMeta):
     @abstractmethod
     def keys(self):
         """Return an iterator on keys in storage"""
-        pass
+        return []
 
     @abstractmethod
     def get(self, key):
@@ -67,6 +67,9 @@ class Storage(metaclass=ABCMeta):
         Returns empty list ([]) if `key` is not found
         """
         pass
+
+    def getmany(self, *keys):
+        return [self.get(key) for key in keys]
 
     def get_reference(self, key):
         return self.get(key)
@@ -92,7 +95,7 @@ class Storage(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def itemcounts(self):
+    def itemcounts(self, **kwargs):
         """Returns the number of items stored under each key"""
         pass
 
@@ -139,7 +142,7 @@ class DictListStorage(OrderedStorage):
     def size(self):
         return len(self._dict)
 
-    def itemcounts(self):
+    def itemcounts(self, **kwargs):
         return {k: len(v) for k, v in self._dict.items()}
 
     def has_key(self, key):
@@ -213,13 +216,24 @@ class RedisStorage:
 class RedisListStorage(OrderedStorage, RedisStorage):
 
     def keys(self):
-        return [x for x in self._redis.hkeys(self._name)]
+        return self._redis.hkeys(self._name)
 
     def redis_keys(self):
         return self._redis.hvals(self._name)
 
     def get(self, key):
-        return self._redis.lrange(self.redis_key(key), 0, -1)
+        return self._get_items(self._redis, self.redis_key(key))
+
+    def getmany(self, *keys):
+        pipe = self._redis.pipeline()
+        pipe.multi()
+        for key in keys:
+            pipe.lrange(self.redis_key(key), 0, -1)
+        return pipe.execute()
+
+    @staticmethod
+    def _get_items(r, k):
+        return r.lrange(k, 0, -1)
 
     def get_reference(self, key):
         return self.redis_key(key)
@@ -241,8 +255,23 @@ class RedisListStorage(OrderedStorage, RedisStorage):
     def size(self):
         return self._redis.hlen(self._name)
 
-    def itemcounts(self):
-        return {k: self._redis.llen(k) for k in self.redis_keys()}
+    def itemcounts(self, force=False, **kwargs):
+        master_key = self.redis_key('counts')
+        if not force and self._redis.exists(master_key):
+            return {k: int(v)
+                    for k, v in self._redis.hgetall(master_key).items()}
+        pipe = self._redis.pipeline()
+        pipe.multi()
+        ks = self.keys()
+        for k in ks:
+            self._get_len(pipe, self.redis_key(k))
+        d = dict(zip(ks, pipe.execute()))
+        self._redis.hmset(master_key, d)
+        return d
+
+    @staticmethod
+    def _get_len(r, k):
+        return r.llen(k)
 
     def has_key(self, key):
         return self._redis.hexists(self._name, key)
@@ -250,8 +279,9 @@ class RedisListStorage(OrderedStorage, RedisStorage):
 
 class RedisSetStorage(UnorderedStorage, RedisListStorage):
 
-    def get(self, key):
-        return self._redis.smembers(self.redis_key(key))
+    @staticmethod
+    def _get_items(r, k):
+        return r.smembers(k)
 
     def remove_val(self, key, val):
         redis_key = self.redis_key(key)
@@ -264,8 +294,9 @@ class RedisSetStorage(UnorderedStorage, RedisListStorage):
         self._redis.hset(self._name, key, redis_key)
         self._redis.sadd(redis_key, val)
 
-    def itemcounts(self):
-        return {k: self._redis.scard(self.redis_key(k)) for k in self.keys()}
+    @staticmethod
+    def _get_len(r, k):
+        return r.scard(k)
 
     def union_references(self, *references):
         if not references:

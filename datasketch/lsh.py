@@ -37,10 +37,10 @@ def _false_negative_probability(threshold, b, r):
 
 def _optimal_param(threshold, num_perm, false_positive_weight,
         false_negative_weight):
-    '''
+    """
     Compute the optimal `MinHashLSH` parameter that minimizes the weighted sum
     of probabilities of false positive and false negative.
-    '''
+    """
     min_error = float("inf")
     opt = (0, 0)
     for b in range(1, num_perm+1):
@@ -56,7 +56,7 @@ def _optimal_param(threshold, num_perm, false_positive_weight,
 
 
 class MinHashLSH(object):
-    '''
+    """
     The Locality Sensitive Hashing index 
     with MinHash (MinHash LSH). 
     It supports query with `Jaccard similarity`_ threshold.
@@ -81,7 +81,7 @@ class MinHashLSH(object):
     Note:
         The MinHash LSH index also works with weighted Jaccard similarity
         and weighted MinHash without modification.
-    '''
+    """
 
     def __init__(self, threshold=0.9, num_perm=128, weights=(0.5,0.5), 
                  storage_config={'type':'dict'}):
@@ -104,7 +104,7 @@ class MinHashLSH(object):
         self.keys = ordered_storage(storage_config)
 
     def insert(self, key, minhash):
-        '''
+        """
         Insert a unique key to the index, together
         with a MinHash (or weighted MinHash) of the set referenced by 
         the key.
@@ -112,7 +112,7 @@ class MinHashLSH(object):
         Args:
             key (hashable): The unique identifier of the set. 
             minhash (datasketch.MinHash): The MinHash of the set. 
-        '''
+        """
         if len(minhash) != self.h:
             raise ValueError("Expecting minhash with length %d, got %d"
                     % (self.h, len(minhash)))
@@ -126,7 +126,7 @@ class MinHashLSH(object):
             hashtable.insert(H, key)
 
     def query(self, minhash):
-        '''
+        """
         Giving the MinHash of the query set, retrieve 
         the keys that references sets with Jaccard
         similarities greater than the threshold.
@@ -136,7 +136,7 @@ class MinHashLSH(object):
 
         Returns:
             `list` of keys.
-        '''
+        """
         if len(minhash) != self.h:
             raise ValueError("Expecting minhash with length %d, got %d"
                     % (self.h, len(minhash)))
@@ -148,22 +148,22 @@ class MinHashLSH(object):
         return list(candidates)
 
     def __contains__(self, key):
-        '''
+        """
         Args:
             key (hashable): The unique identifier of a set.
 
         Returns: 
             bool: True only if the key exists in the index.
-        '''
+        """
         return key in self.keys
 
     def remove(self, key):
-        '''
+        """
         Remove the key from the index.
 
         Args:
             key (hashable): The unique identifier of a set.
-        '''
+        """
         if key not in self.keys:
             raise ValueError("The given key does not exist")
         for H, hashtable in zip(self.keys[key], self.hashtables):
@@ -173,19 +173,30 @@ class MinHashLSH(object):
         self.keys.remove(key)
 
     def is_empty(self):
-        '''
+        """
         Returns:
             bool: Check if the index is empty.
-        '''
+        """
         return any(t.size() == 0 for t in self.hashtables)
 
     @staticmethod
     def _H(hs):
         return bytes(hs.byteswap().data)
 
-    def get_counts(self):
-        self.counts_ = [hashtable.itemcounts() for hashtable in self.hashtables]
+    def get_counts(self, **kwargs):
+        self.counts_ = [
+            hashtable.itemcounts(**kwargs) for hashtable in self.hashtables]
         return self.counts_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Do not persist counts
+        state.pop('counts_', None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self.get_counts()
 
 
 class DocMinHashLSH(MinHashLSH):
@@ -212,8 +223,10 @@ class DocMinHashLSH(MinHashLSH):
     def query_keys(self, *keys):
         keys = [x.encode('utf8') for x in keys]
         to_union = set()
-        for key in tqdm.tqdm(keys, disable=not self.display_progress):
-            for H, hashtable in zip(self.keys[key], self.hashtables):
+        Hss = self.keys.getmany(*keys)
+        for key, Hs in tqdm.tqdm(zip(keys, Hss),
+                                 disable=not self.display_progress):
+            for H, hashtable in zip(Hs, self.hashtables):
                 to_union.add(hashtable.get_reference(H))
         r = self.hashtables[0].union_references(*to_union)
         for key in keys:
@@ -222,23 +235,17 @@ class DocMinHashLSH(MinHashLSH):
         return l
 
     def get_subset_counts(self, *keys):
-        key_set = set(x.encode('utf8') for x in keys)
+        key_set = list(set(x.encode('utf8') for x in keys))
         hashtables = [unordered_storage({'type': 'dict'}) for _ in
                       range(self.b)]
-        for key in [k for k in self.keys if k in key_set]:
-            for H, hashtable in zip(self.keys[key], hashtables):
+        Hss = self.keys.getmany(*key_set)
+        for key, Hs in zip(key_set, Hss):
+            for H, hashtable in zip(Hs, hashtables):
                 hashtable.insert(H, key)
         return [hashtable.itemcounts() for hashtable in hashtables]
 
-    # def score_results(self, results, base_counts, seed_counts):
-    #     output = defaultdict(lambda: 0)
-    #     for result in results:
-    #         for H, base, seed in zip(self.keys[result], base_counts, seed_counts):
-    #             output[result] += seed.get(H, 0)/base[H]/self.b
-    #     return output
-
-    def get_hashvalues(self, key):
-        return self.keys[key.encode('utf8')]
+    def get_hashvalues(self, *keys):
+        return self.keys.getmany(*[key.encode('utf8') for key in keys])
 
     def get_status(self):
         status = dict(keyspace_size=len(self.keys))
