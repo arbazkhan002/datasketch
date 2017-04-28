@@ -23,13 +23,6 @@ def unordered_storage(config):
         return RedisSetStorage(config)
 
 
-def prepare_storage(config):
-    tp = config['type']
-    if tp == 'redis':
-        redis_driver = redis.Redis(**config['redis'])
-        redis_driver.flushdb()
-
-
 # def sorted_storage(config):
 #     tp = config['type']
 #     if tp == 'dict':

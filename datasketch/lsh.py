@@ -1,8 +1,7 @@
 import tqdm
-from collections import defaultdict
 
 from datasketch.storage import (
-    ordered_storage, unordered_storage, prepare_storage)
+    ordered_storage, unordered_storage)
 from datasketch.minhash import MinHash
 
 
@@ -98,7 +97,6 @@ class MinHashLSH(object):
         false_positive_weight, false_negative_weight = weights
         self.b, self.r = _optimal_param(threshold, num_perm,
                 false_positive_weight, false_negative_weight)
-        prepare_storage(storage_config)
         self.hashtables = [unordered_storage(storage_config) for _ in range(self.b)]
         self.hashranges = [(i*self.r, (i+1)*self.r) for i in range(self.b)]
         self.keys = ordered_storage(storage_config)
@@ -217,7 +215,13 @@ class DocMinHashLSH(MinHashLSH):
         for key, document in documents.items():
             m = MinHash(num_perm=self.h, seed=self.random_seed)
             for word in document:
-                m.update(word.encode('utf8'))
+                if isinstance(word, str):
+                    m.update(word.encode('utf8'))
+                elif isinstance(word, tuple):
+                    text, multiplicity = word
+                    for i in range(multiplicity):
+                        token = text + str(i)
+                        m.update(token.encode('utf8'))
             self.insert(key.encode('utf8'), m)
 
     def query_keys(self, *keys):
