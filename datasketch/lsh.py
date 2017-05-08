@@ -194,7 +194,7 @@ class MinHashLSH(object):
 
     def __setstate__(self, state):
         self.__dict__ = state
-        self.get_counts()
+        # self.get_counts()
 
 
 class DocMinHashLSH(MinHashLSH):
@@ -252,7 +252,4 @@ class DocMinHashLSH(MinHashLSH):
         return self.keys.getmany(*[key.encode('utf8') for key in keys])
 
     def get_status(self):
-        status = dict(keyspace_size=len(self.keys))
-        redis = self.keys.config.get('redis', {})
-        status.update(redis)
-        return status
+        return self.keys.status()

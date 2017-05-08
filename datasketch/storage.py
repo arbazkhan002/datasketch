@@ -1,9 +1,12 @@
 from collections import defaultdict
 import redis
-import random, string
+import os
+import random
+import string
 from functools import reduce
 from abc import ABCMeta, abstractmethod
 ABC = ABCMeta('ABC', (object,), {}) # compatible with Python 2 *and* 3
+
 
 def ordered_storage(config):
     """Return ordered storage system based on the specified config"""
@@ -97,6 +100,9 @@ class Storage(ABC):
         """Determines whether the key is in the storage or not"""
         pass
 
+    def status(self):
+        return {'keyspace_size': len(self)}
+
 
 class OrderedStorage(Storage):
 
@@ -188,13 +194,23 @@ class RedisStorage:
 
     def __init__(self, config, name=None):
         self.config = config
-        self._redis = redis.Redis(**self.config['redis'])
+        redis_param = self._parse_config(self.config['redis'])
+        self._redis = redis.Redis(**redis_param)
         if name is None:
             name = _random_name(11)
         self._name = name
 
     def redis_key(self, key):
         return (self._name, key)
+
+    def _parse_config(self, config):
+        cfg = {}
+        for key, value in config.items():
+            if isinstance(value, dict):
+                if 'env' in value:
+                    value = os.getenv(value['env'], value.get('default', None))
+            cfg[key] = value
+        return cfg
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -203,7 +219,8 @@ class RedisStorage:
 
     def __setstate__(self, state):
         self.__dict__ = state
-        self._redis = redis.Redis(**self.config['redis'])
+        redis_param = self._parse_config(self.config['redis'])
+        self._redis = redis.Redis(**redis_param)
 
 
 class RedisListStorage(OrderedStorage, RedisStorage):
@@ -213,6 +230,11 @@ class RedisListStorage(OrderedStorage, RedisStorage):
 
     def redis_keys(self):
         return self._redis.hvals(self._name)
+
+    def status(self):
+        status = self._parse_config(self.config['redis'])
+        status.update(Storage.status(self))
+        return status
 
     def get(self, key):
         return self._get_items(self._redis, self.redis_key(key))
