@@ -1,5 +1,3 @@
-import tqdm
-
 from datasketch.storage import (
     ordered_storage, unordered_storage)
 from datasketch.minhash import MinHash
@@ -228,8 +226,7 @@ class DocMinHashLSH(MinHashLSH):
         keys = [x.encode('utf8') for x in keys]
         to_union = set()
         Hss = self.keys.getmany(*keys)
-        for key, Hs in tqdm.tqdm(zip(keys, Hss),
-                                 disable=not self.display_progress):
+        for key, Hs in zip(keys, Hss):
             for H, hashtable in zip(Hs, self.hashtables):
                 to_union.add(hashtable.get_reference(H))
         r = self.hashtables[0].union_references(*to_union)

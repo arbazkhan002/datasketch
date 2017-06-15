@@ -1,8 +1,4 @@
-import tqdm
-
-from datasketch.storage import (
-    ordered_storage, unordered_storage)
-from datasketch.minhash import MinHash
+from datasketch.storage import unordered_storage
 
 
 class InvertedIndex(object):
