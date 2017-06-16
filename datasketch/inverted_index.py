@@ -16,8 +16,8 @@ class InvertedIndex(object):
         self.keys.insert(key, value)
         self.index.insert(value, key)
 
-    def insert_documents(self, **documents):
-        for key, document in documents.items():
+    def insert_documents(self, *key_documents):
+        for key, document in key_documents:
             for word in document:
                 self.insert(key.encode('utf8'), word.encode('utf8'))
 

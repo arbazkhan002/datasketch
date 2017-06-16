@@ -209,8 +209,8 @@ class DocMinHashLSH(MinHashLSH):
         self.display_progress = display_progress
         self.storage_config = storage_config
 
-    def insert_documents(self, **documents):
-        for key, document in documents.items():
+    def insert_documents(self, *key_documents):
+        for key, document in key_documents:
             m = MinHash(num_perm=self.h, seed=self.random_seed)
             for word in document:
                 if isinstance(word, str):
