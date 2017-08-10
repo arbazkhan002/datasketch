@@ -1,7 +1,8 @@
 from datasketch.hyperloglog import HyperLogLog, HyperLogLogPlusPlus
-from datasketch.minhash import MinHash
+from datasketch.minhash import MinHash, MinHashGenerator
 from datasketch.b_bit_minhash import bBitMinHash
 from datasketch.lsh import MinHashLSH
+from datasketch.inverted_index import InvertedIndex
 from datasketch.weighted_minhash import WeightedMinHash, WeightedMinHashGenerator
 from datasketch.lshforest import MinHashLSHForest
 from datasketch.lshensemble import MinHashLSHEnsemble
