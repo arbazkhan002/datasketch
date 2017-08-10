@@ -10,6 +10,7 @@ _mersenne_prime = (1 << 61) - 1
 _max_hash = (1 << 32) - 1
 _hash_range = (1 << 32)
 
+
 class MinHash(object):
     '''MinHash is a probabilistic data structure for computing 
     `Jaccard similarity`_ between sets.
@@ -54,7 +55,7 @@ class MinHash(object):
     '''
 
     def __init__(self, num_perm=128, seed=1, hashobj=sha1,
-            hashvalues=None, permutations=None):
+                 hashvalues=None, permutations=None):
         if hashvalues is not None:
             num_perm = len(hashvalues)
         if num_perm > _hash_range:
@@ -69,17 +70,11 @@ class MinHash(object):
             self.hashvalues = self._parse_hashvalues(hashvalues)
         else:
             self.hashvalues = self._init_hashvalues(num_perm)
-        # Initalize permutation function parameters
+        # Initialize permutation function parameters
         if permutations is not None:
             self.permutations = permutations
         else:
-            generator = np.random.RandomState(self.seed)
-            # Create parameters for a random bijective permutation function
-            # that maps a 32-bit hash value to another 32-bit hash value.
-            # http://en.wikipedia.org/wiki/Universal_hashing
-            self.permutations = np.array([(generator.randint(1, _mersenne_prime, dtype=np.uint64),
-                                           generator.randint(0, _mersenne_prime, dtype=np.uint64))
-                                          for _ in range(num_perm)], dtype=np.uint64).T
+            self.permutations = self.random_permutations(self.seed, num_perm)
         if len(self) != len(self.permutations[0]):
             raise ValueError("Numbers of hash values and permutations mismatch")
 
@@ -88,6 +83,18 @@ class MinHash(object):
 
     def _parse_hashvalues(self, hashvalues):
         return np.array(hashvalues, dtype=np.uint64)
+
+    @staticmethod
+    def random_permutations(seed, num_perm):
+        generator = np.random.RandomState(seed)
+        # Create parameters for a random bijective permutation function
+        # that maps a 32-bit hash value to another 32-bit hash value.
+        # http://en.wikipedia.org/wiki/Universal_hashing
+        permutations = np.array(
+            [(generator.randint(1, _mersenne_prime, dtype=np.uint64),
+              generator.randint(0, _mersenne_prime, dtype=np.uint64))
+             for _ in range(num_perm)], dtype=np.uint64).T
+        return permutations
 
     def update(self, b):
         '''Update this MinHash with a new value.
@@ -224,3 +231,62 @@ class MinHash(object):
         permutations = mhs[0].permutations
         return cls(num_perm=num_perm, seed=seed, hashvalues=hashvalues,
                 permutations=permutations)
+
+
+class MinHashGenerator:
+    '''A generator for rapidly creating Minhash objects from a corpus of
+    documents.
+
+    Args:
+        num_perm (int, optional): Number of random permutation functions.
+        seed (int, optional): The random seed controls the set of random
+            permutation functions generated for these MinHashes.
+        hashobj (optional): The hash function used by these MinHashes.
+            It must implements
+            the `digest()` method similar to hashlib_ hash functions, such
+            as `hashlib.sha1`.
+        permutations (optional): The permutation function parameters.
+    '''
+
+    def __init__(self, num_perm=128, seed=1, hashobj=sha1,
+                 permutations=None):
+        if num_perm > _hash_range:
+            # Because 1) we don't want the size to be too large, and
+            # 2) we are using 4 bytes to store the size value
+            raise ValueError("Cannot have more than %d number of\
+                    permutation functions" % _hash_range)
+        self.num_perm = num_perm
+        self.seed = seed
+        self.hashobj = hashobj
+        # Initalize permutation function parameters
+        if permutations is not None:
+            self.permutations = permutations
+        else:
+            self.permutations = MinHash.random_permutations(self.seed, num_perm)
+
+    def create(self, document, encoding='utf8'):
+        '''Create a MinHash from this scheme.
+
+        Args:
+            document (list of string or tuple):
+                If elements are strings, the MinHash is updated with the
+                (UTF-8 encoded) strings in the document.
+                If elements are tuples, the tuples must be of the form
+                    (word, multiplicity)
+                The MinHash is updated with "word{}".format(i) for
+                i <= multiplicity for each (word, multiplicity) pair in the
+                document
+            encoding (str, optional):
+                Encoding to use for strings. The default is UTF-8 encoding.
+        '''
+        m = MinHash(num_perm=self.num_perm, seed=self.seed,
+                    permutations=self.permutations)
+        for word in document:
+            if isinstance(word, str):
+                m.update(word.encode(encoding))
+            elif isinstance(word, tuple):
+                text, multiplicity = word
+                for i in range(multiplicity):
+                    token = text + str(i)
+                    m.update(token.encode(encoding))
+        return m
