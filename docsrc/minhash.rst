@@ -74,3 +74,22 @@ cardinality. The analysis is presented in `Cohen
 If you are handling billions of MinHash objects, consider using 
 :class:`datasketch.LeanMinHash` to reduce your memory footprint.
 
+If you want to rapidly create concordant :class:`datasktech.MinHash` objects
+from a corpus of documents, use the :class:`datasketch.MinHashGenerator`:
+
+.. code:: python
+
+    from datasketch import MinHashGenerator
+
+    data1 = ['minhash', 'is', 'a', 'probabilistic', 'data', 'structure', 'for',
+            'estimating', 'the', 'similarity', 'between', 'datasets']
+    data2 = ['minhash', 'is', 'a', 'probability', 'data', 'structure', 'for',
+            'estimating', 'the', 'similarity', 'between', 'documents']
+
+    g = MinHashGenerator(num_perm=256)
+    m1 = g.create(data1)
+    m2 = g.create(data2)
+    print("Estimated Jaccard for data1 and data2 is", m1.jaccard(m2))
+
+Importantly, this obviates recalculation of the random permutations for each
+new :class:`datasketch.MinHash`.

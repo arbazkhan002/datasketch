@@ -9,6 +9,11 @@ MinHash
     :members:
     :special-members:
 
+.. autoclass:: datasketch.MinHashGenerator
+    :members:
+    :special-members:
+
+
 Lean MinHash
 ------------
 

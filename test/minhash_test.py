@@ -1,10 +1,10 @@
 import unittest
 import struct
 import pickle
-from hashlib import sha1
 import numpy as np
 from datasketch import minhash
 from datasketch.b_bit_minhash import bBitMinHash
+
 
 class FakeHash(object):
     '''
@@ -29,6 +29,13 @@ class TestMinHash(unittest.TestCase):
     def test_init(self):
         m1 = minhash.MinHash(4, 1, hashobj=FakeHash)
         m2 = minhash.MinHash(4, 1, hashobj=FakeHash)
+        self.assertTrue(np.array_equal(m1.hashvalues, m2.hashvalues))
+        self.assertTrue(np.array_equal(m1.permutations, m2.permutations))
+
+    def test_generate(self):
+        g = minhash.MinHashGenerator(4, 1, hashobj=FakeHash)
+        m1 = g.create(['a', 'e', 'i', 'o', 'u'])
+        m2 = g.create(['a', 'e', 'i', 'o', 'u'])
         self.assertTrue(np.array_equal(m1.hashvalues, m2.hashvalues))
         self.assertTrue(np.array_equal(m1.permutations, m2.permutations))
 
@@ -111,7 +118,7 @@ class TestMinHash(unittest.TestCase):
         m.update(b'Hello')
         self.assertListEqual(
             m.hashvalues.tolist(),
-            [734825475, 960773806, 359816889, 342714745],
+            [2814212640, 3091661445, 3859323165, 1984368834],
         )
 
 class TestbBitMinHash(unittest.TestCase):

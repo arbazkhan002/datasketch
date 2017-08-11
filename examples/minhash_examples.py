@@ -2,8 +2,7 @@
 Some examples for MinHash
 '''
 
-from hashlib import sha1
-from datasketch.minhash import MinHash
+from datasketch.minhash import MinHash, MinHashGenerator
 
 data1 = ['minhash', 'is', 'a', 'probabilistic', 'data', 'structure', 'for',
         'estimating', 'the', 'similarity', 'between', 'datasets']
@@ -25,5 +24,13 @@ def eg1():
             float(len(s1.union(s2)))
     print("Actual Jaccard for data1 and data2 is", actual_jaccard)
 
+
+def eg2():
+    g = MinHashGenerator()
+    m1 = g.create(data1)
+    m2 = g.create(data2)
+    print("Estimated Jaccard for data1 and data2 is", m1.jaccard(m2))
+
 if __name__ == "__main__":
     eg1()
+    eg2()
