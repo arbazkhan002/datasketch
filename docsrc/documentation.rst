@@ -62,3 +62,10 @@ HyperLogLog++
 .. autoclass:: datasketch.HyperLogLogPlusPlus
     :members:
     :special-members:
+
+Inverted Index
+--------------
+
+.. autoclass:: datasketch.InvertedIndex
+    :members:
+    :special-members:
